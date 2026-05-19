@@ -1,0 +1,12 @@
+*.json
+*.csv
+*.xlsx
+*.gif
+*.jpeg
+*.jpg
+*.mp4
+UL PH nutrition/
+UL PH nutrition_converted/
+service_account/
+*.pickle
+.vscode/
