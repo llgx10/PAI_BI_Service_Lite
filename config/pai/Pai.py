@@ -47,8 +47,17 @@ class downloadMedia:
     # PUBLIC METHODS
     # =====================================================
     def get_thumbnail(self, url):
-
         try:
+
+            # =========================================
+            # NORMALIZE DIRECT VIDEO → IMAGE
+            # =========================================
+            url = re.sub(
+                r'(_video)?\.(mp4|webm)$',
+                '.jpeg',
+                url,
+                flags=re.IGNORECASE
+            )
 
             # AdClarity direct image URL
             if "adclarity" in url.lower():
@@ -75,7 +84,7 @@ class downloadMedia:
             return self._error(f"Unexpected error: {str(e)}")
 
     # =====================================================
-    # NEW MAIN DOWNLOAD METHOD
+    # MAIN DOWNLOAD METHOD
     # =====================================================
     def download_media(
         self,
@@ -90,12 +99,22 @@ class downloadMedia:
             # =========================================
             # THUMBNAIL MODE
             # =========================================
+            path = urlparse(url).path.lower()
+
+            # thumbnail mode
             if mode == "thumbnail":
 
+                url = re.sub(
+                    r'(_video)?\.(mp4|webm)$',
+                    '.jpeg',
+                    url,
+                    flags=re.IGNORECASE
+                )
+                print(url)
                 return self.download_thumbnail(
                     url=url,
                     save_folder=save_folder
-                )
+    )
 
             # =========================================
             # DIRECT FILE URL
@@ -110,8 +129,7 @@ class downloadMedia:
                 ".webm"
             )
 
-            if url.lower().endswith(direct_extensions):
-
+            if path.lower().endswith(direct_extensions):
                 os.makedirs(save_folder, exist_ok=True)
 
                 filename = os.path.basename(
