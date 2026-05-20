@@ -7,6 +7,7 @@
 *.mp4
 UL PH nutrition/
 UL PH nutrition_converted/
+UL PH nutrition2/
 service_account/
 *.pickle
 .vscode/
