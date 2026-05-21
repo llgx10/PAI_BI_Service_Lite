@@ -121,7 +121,68 @@ class downloadMedia:
 
         except Exception as e:
             return self._error(f"Unexpected error: {str(e)}")
+    # =========================================================
+    # GENERATE EXPECTED FILENAME
+    # =========================================================
+    def generate_filename(self, url):
 
+        try:
+
+            url = str(url).strip()
+
+            platform = self.detect_platform(url)
+
+            filename = None
+
+            # =================================================
+            # INSTAGRAM
+            # =================================================
+            if platform == "instagram":
+
+                shortcode = self._extract_ig_shortcode(url)
+
+                if shortcode:
+                    filename = f"{shortcode}.jpg"
+
+            # =================================================
+            # TIKTOK
+            # =================================================
+            elif platform == "tiktok":
+
+                filename = (
+                    url.split("?")[0]
+                    .rstrip("/")
+                    .split("/")[-1]
+                ) + ".mp4"
+
+            # =================================================
+            # YOUTUBE
+            # =================================================
+            elif platform == "youtube":
+
+                if "v=" in url:
+                    filename = url.split("v=")[-1].split("&")[0] + ".mp4"
+
+            # =================================================
+            # GENERIC URL PATH
+            # =================================================
+            else:
+
+                path = urlparse(url).path
+
+                if path:
+                    filename = os.path.basename(path)
+
+            # =================================================
+            # FALLBACK
+            # =================================================
+            if not filename:
+                filename = "unknown_file"
+
+            return filename
+
+        except Exception:
+            return "unknown_file"
     # =====================================================
     # MAIN DOWNLOAD METHOD
     # =====================================================
@@ -135,12 +196,51 @@ class downloadMedia:
 
         try:
 
+            os.makedirs(save_folder, exist_ok=True)
+
+            # =========================================
+            # PLATFORM DETECTION EARLY 
+            # =========================================
+            platform = self.detect_platform(url)
+
+            # =========================================
+            # GENERATE FILENAME FIRST (SKIP LOGIC)
+            # =========================================
+            filename = None
+
+            if platform == "instagram":
+                shortcode = self._extract_ig_shortcode(url)
+                filename = f"{shortcode}.jpg" if shortcode else None
+
+            elif platform == "tiktok":
+                filename = url.split("?")[0].rstrip("/").split("/")[-1] + ".mp4"
+
+            elif platform == "youtube":
+                filename = url.split("v=")[-1] + ".mp4"
+
+            elif path := urlparse(url).path:
+                filename = os.path.basename(path)
+
+            # fallback
+            if not filename:
+                filename = "unknown_file"
+
+            filepath = os.path.join(save_folder, filename)
+
+            # =========================================
+            # SKIP IF EXISTS (MAIN FIX)
+            # =========================================
+            if os.path.exists(filepath):
+                return {
+                    "success": True,
+                    "saved_to": filepath,
+                    "skipped": True,
+                    "reason": "already_exists"
+                }
+
             # =========================================
             # THUMBNAIL MODE
             # =========================================
-            path = urlparse(url).path.lower()
-
-            # thumbnail mode
             if mode == "thumbnail":
 
                 url = re.sub(
@@ -149,36 +249,21 @@ class downloadMedia:
                     url,
                     flags=re.IGNORECASE
                 )
-                print(url)
+
                 return self.download_thumbnail(
                     url=url,
                     save_folder=save_folder
-    )
+                )
 
             # =========================================
-            # DIRECT FILE URL
+            # DIRECT FILE DOWNLOAD
             # =========================================
             direct_extensions = (
-                ".jpg",
-                ".jpeg",
-                ".png",
-                ".webp",
-                ".mp4",
-                ".mov",
-                ".webm"
+                ".jpg", ".jpeg", ".png", ".webp",
+                ".mp4", ".mov", ".webm"
             )
 
-            if path.lower().endswith(direct_extensions):
-                os.makedirs(save_folder, exist_ok=True)
-
-                filename = os.path.basename(
-                    urlparse(url).path
-                )
-
-                filepath = os.path.join(
-                    save_folder,
-                    filename
-                )
+            if urlparse(url).path.lower().endswith(direct_extensions):
 
                 headers = {
                     "User-Agent": "Mozilla/5.0",
@@ -196,9 +281,7 @@ class downloadMedia:
 
                     with open(filepath, "wb") as f:
 
-                        for chunk in r.iter_content(
-                            chunk_size=1024 * 1024  # 1MB chunks
-                        ):
+                        for chunk in r.iter_content(chunk_size=1024 * 1024):
 
                             if chunk:
                                 f.write(chunk)
@@ -210,22 +293,15 @@ class downloadMedia:
                 }
 
             # =========================================
-            # PLATFORM DETECTION
+            # PLATFORM DOWNLOAD (yt_dlp)
             # =========================================
-            platform = self.detect_platform(url)
-
-            # yt_dlp-supported platforms
-            if platform in [
-                "tiktok",
-                "youtube",
-                "instagram",
-                "facebook"
-            ]:
+            if platform in ["tiktok", "youtube", "instagram", "facebook"]:
 
                 return self._download_with_ytdlp(
                     url=url,
                     save_folder=save_folder,
-                    quality=quality
+                    quality=quality,
+                    filename=filename  
                 )
 
             return self._error(
@@ -268,10 +344,6 @@ class downloadMedia:
 
     def _get_instagram_thumbnail(self, url):
 
-        # =========================================
-        # NORMALIZE URL
-        # =========================================
-
         if "reels" in url:
             url = url.replace("reels", "p")
 
@@ -280,45 +352,26 @@ class downloadMedia:
         if not shortcode:
             return self._error("Invalid Instagram URL")
 
-        # =========================================
-        # OUTPUT PATH
-        # =========================================
+        os.makedirs("instagram_thumbnails", exist_ok=True)
 
-        output_dir = "instagram_thumbnails"
+        output_path = f"instagram_thumbnails/{shortcode}.jpg"
 
-        os.makedirs(output_dir, exist_ok=True)
-
-        output_path = f"{output_dir}/{shortcode}.jpg"
-
-        # =========================================
-        # ALREADY EXISTS
-        # =========================================
-
+        # already downloaded
         if os.path.exists(output_path):
-
-            self._log_instagram(
-                shortcode,
-                url,
-                "cache",
-                "success",
-                "already exists"
-            )
-
             return self._success(output_path)
-
-        # =========================================
-        # yt_dlp FIRST (FASTEST + SAFEST)
-        # =========================================
 
         ydl_opts = {
             "quiet": True,
             "skip_download": True,
             "no_warnings": True,
             "extract_flat": False,
-            "nocheckcertificate": True,
         }
 
         try:
+
+            # =========================================
+            # TRY yt_dlp FIRST
+            # =========================================
 
             with YoutubeDL(ydl_opts) as ydl:
 
@@ -326,10 +379,6 @@ class downloadMedia:
                     url,
                     download=False
                 )
-
-            # =====================================
-            # TRY MULTIPLE FIELDS
-            # =====================================
 
             thumbnail = (
                 info.get("thumbnail")
@@ -339,84 +388,12 @@ class downloadMedia:
                     else None
                 )
                 or info.get("display_url")
-                or info.get("url")
             )
 
             if thumbnail:
 
                 response = requests.get(
                     thumbnail,
-                    timeout=30,
-                    headers={
-                        "User-Agent": "Mozilla/5.0"
-                    }
-                )
-
-                response.raise_for_status()
-
-                with open(output_path, "wb") as f:
-                    f.write(response.content)
-
-                self._log_instagram(
-                    shortcode,
-                    url,
-                    "yt_dlp",
-                    "success",
-                    "thumbnail downloaded"
-                )
-
-                return self._success(output_path)
-
-            self._log_instagram(
-                shortcode,
-                url,
-                "yt_dlp",
-                "failed",
-                "No thumbnail found"
-            )
-
-        except Exception as yt_error:
-
-            error_msg = str(yt_error)
-
-            self._log_instagram(
-                shortcode,
-                url,
-                "yt_dlp",
-                "failed",
-                error_msg
-            )
-
-        # =========================================
-        # FALLBACK → OG:IMAGE SCRAPING
-        # =========================================
-
-        try:
-
-            headers = {
-                "User-Agent": "Mozilla/5.0"
-            }
-
-            html = requests.get(
-                url,
-                headers=headers,
-                timeout=30
-            ).text
-
-            import re
-
-            match = re.search(
-                r'<meta property="og:image" content="([^"]+)"',
-                html
-            )
-
-            if match:
-
-                image_url = match.group(1)
-
-                response = requests.get(
-                    image_url,
-                    headers=headers,
                     timeout=30
                 )
 
@@ -425,39 +402,74 @@ class downloadMedia:
                 with open(output_path, "wb") as f:
                     f.write(response.content)
 
-                self._log_instagram(
-                    shortcode,
-                    url,
-                    "og:image",
-                    "success",
-                    "fallback success"
+                return self._success(output_path)
+
+        except Exception as yt_error:
+
+            print(f"[yt_dlp failed] {url}")
+            print(str(yt_error))
+
+        # =========================================
+        # FALLBACK → INSTALOADER
+        # =========================================
+
+        try:
+
+            if self.ig_loader:
+
+                post = instaloader.Post.from_shortcode(
+                    self.ig_loader.context,
+                    shortcode
                 )
+
+                image_url = post.url
+
+                response = requests.get(
+                    image_url,
+                    timeout=30
+                )
+
+                response.raise_for_status()
+
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
 
                 return self._success(output_path)
 
-            self._log_instagram(
-                shortcode,
-                url,
-                "og:image",
-                "failed",
-                "No og:image found"
-            )
+        except Exception as ig_error:
+
+            print(f"[instaloader failed] {url}")
+            print(str(ig_error))
+
+        # =========================================
+        # FINAL FALLBACK
+        # =========================================
+
+        try:
+
+            thumbnail = self._scrape_og_image(url)
+
+            if isinstance(thumbnail, dict):
+                thumbnail = thumbnail.get("data")
+
+            if thumbnail:
+
+                response = requests.get(
+                    thumbnail,
+                    timeout=30
+                )
+
+                response.raise_for_status()
+
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+
+                return self._success(output_path)
 
         except Exception as scrape_error:
 
-            error_msg = str(scrape_error)
-
-            self._log_instagram(
-                shortcode,
-                url,
-                "og:image",
-                "failed",
-                error_msg
-            )
-
-        # =========================================
-        # FINAL FAIL
-        # =========================================
+            print(f"[og:image failed] {url}")
+            print(str(scrape_error))
 
         return self._error(
             f"Failed to download thumbnail: {url}"
