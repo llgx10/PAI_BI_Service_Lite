@@ -1,0 +1,13 @@
+requests
+instaloader
+pillow-heif
+beautifulsoup4
+pillow
+yt-dlp
+google-cloud-storage
+google-auth
+google-auth-oauthlib
+pandas
+pyarrow
+tqdm
+moviepy

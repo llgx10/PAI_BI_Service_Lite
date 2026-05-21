@@ -7,14 +7,14 @@ from tqdm import tqdm
 
 sys.path.append("./")
 
-from config.pai.Pai import downloadMedia
+from connector.pai.Pai import downloadMedia
 
 
 # =====================================================
 # CONFIG
 # =====================================================
-CSV_FILE = "UL TH Nutrition.csv"
-SAVE_FOLDER = "UL PH nutrition thumbnail"
+CSV_FILE = "PMI Influencer Data.csv"
+SAVE_FOLDER = "PMI Influencer Data"
 
 TIMEOUT = 30
 

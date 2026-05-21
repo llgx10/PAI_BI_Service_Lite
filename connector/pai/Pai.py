@@ -3,7 +3,7 @@ import os
 import requests
 import instaloader
 import pillow_heif
-
+import csv
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from PIL import Image
@@ -46,6 +46,45 @@ class downloadMedia:
     # =====================================================
     # PUBLIC METHODS
     # =====================================================
+
+    def _log_instagram(
+        self,
+        shortcode,
+        url,
+        method,
+        status,
+        message
+    ):
+
+        log_file = "instagram_logs.csv"
+
+        file_exists = os.path.exists(log_file)
+
+        with open(
+            log_file,
+            "a",
+            newline="",
+            encoding="utf-8"
+        ) as f:
+
+            writer = csv.writer(f)
+
+            if not file_exists:
+                writer.writerow([
+                    "shortcode",
+                    "url",
+                    "method",
+                    "status",
+                    "message"
+                ])
+
+            writer.writerow([
+                shortcode,
+                url,
+                method,
+                status,
+                str(message)
+            ])
     def get_thumbnail(self, url):
         try:
 
@@ -223,35 +262,206 @@ class downloadMedia:
     # =====================================================
     # INSTAGRAM
     # =====================================================
+    import os
+
+
+
     def _get_instagram_thumbnail(self, url):
+
+        # =========================================
+        # NORMALIZE URL
+        # =========================================
 
         if "reels" in url:
             url = url.replace("reels", "p")
 
+        shortcode = self._extract_ig_shortcode(url)
+
+        if not shortcode:
+            return self._error("Invalid Instagram URL")
+
+        # =========================================
+        # OUTPUT PATH
+        # =========================================
+
+        output_dir = "instagram_thumbnails"
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        output_path = f"{output_dir}/{shortcode}.jpg"
+
+        # =========================================
+        # ALREADY EXISTS
+        # =========================================
+
+        if os.path.exists(output_path):
+
+            self._log_instagram(
+                shortcode,
+                url,
+                "cache",
+                "success",
+                "already exists"
+            )
+
+            return self._success(output_path)
+
+        # =========================================
+        # yt_dlp FIRST (FASTEST + SAFEST)
+        # =========================================
+
+        ydl_opts = {
+            "quiet": True,
+            "skip_download": True,
+            "no_warnings": True,
+            "extract_flat": False,
+            "nocheckcertificate": True,
+        }
+
         try:
 
-            shortcode = self._extract_ig_shortcode(url)
+            with YoutubeDL(ydl_opts) as ydl:
 
-            if not shortcode:
-                return self._error("Invalid Instagram URL")
-
-            if self.ig_loader:
-
-                post = instaloader.Post.from_shortcode(
-                    self.ig_loader.context,
-                    shortcode
+                info = ydl.extract_info(
+                    url,
+                    download=False
                 )
 
-                return self._success(post.url)
+            # =====================================
+            # TRY MULTIPLE FIELDS
+            # =====================================
 
-            return self._scrape_og_image(url)
-
-        except Exception as e:
-
-            return self._scrape_og_image(
-                url,
-                fallback_error=str(e)
+            thumbnail = (
+                info.get("thumbnail")
+                or (
+                    info.get("thumbnails", [{}])[-1].get("url")
+                    if info.get("thumbnails")
+                    else None
+                )
+                or info.get("display_url")
+                or info.get("url")
             )
+
+            if thumbnail:
+
+                response = requests.get(
+                    thumbnail,
+                    timeout=30,
+                    headers={
+                        "User-Agent": "Mozilla/5.0"
+                    }
+                )
+
+                response.raise_for_status()
+
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+
+                self._log_instagram(
+                    shortcode,
+                    url,
+                    "yt_dlp",
+                    "success",
+                    "thumbnail downloaded"
+                )
+
+                return self._success(output_path)
+
+            self._log_instagram(
+                shortcode,
+                url,
+                "yt_dlp",
+                "failed",
+                "No thumbnail found"
+            )
+
+        except Exception as yt_error:
+
+            error_msg = str(yt_error)
+
+            self._log_instagram(
+                shortcode,
+                url,
+                "yt_dlp",
+                "failed",
+                error_msg
+            )
+
+        # =========================================
+        # FALLBACK → OG:IMAGE SCRAPING
+        # =========================================
+
+        try:
+
+            headers = {
+                "User-Agent": "Mozilla/5.0"
+            }
+
+            html = requests.get(
+                url,
+                headers=headers,
+                timeout=30
+            ).text
+
+            import re
+
+            match = re.search(
+                r'<meta property="og:image" content="([^"]+)"',
+                html
+            )
+
+            if match:
+
+                image_url = match.group(1)
+
+                response = requests.get(
+                    image_url,
+                    headers=headers,
+                    timeout=30
+                )
+
+                response.raise_for_status()
+
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+
+                self._log_instagram(
+                    shortcode,
+                    url,
+                    "og:image",
+                    "success",
+                    "fallback success"
+                )
+
+                return self._success(output_path)
+
+            self._log_instagram(
+                shortcode,
+                url,
+                "og:image",
+                "failed",
+                "No og:image found"
+            )
+
+        except Exception as scrape_error:
+
+            error_msg = str(scrape_error)
+
+            self._log_instagram(
+                shortcode,
+                url,
+                "og:image",
+                "failed",
+                error_msg
+            )
+
+        # =========================================
+        # FINAL FAIL
+        # =========================================
+
+        return self._error(
+            f"Failed to download thumbnail: {url}"
+        )
 
     def _extract_ig_shortcode(self, url):
 

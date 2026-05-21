@@ -1,6 +1,6 @@
 import sys
 sys.path.append ('./')
-from config.gcs.gcs import GCS
+from connector.gcs.gcs import GCS
 
 pai_gcs=GCS()
 bucket_name='pai-social-posts-data'

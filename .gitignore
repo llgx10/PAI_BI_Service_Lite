@@ -12,3 +12,5 @@ UL PH nutrition thumbnail/
 service_account/
 *.pickle
 .vscode/
+/logs
+/PMI Influencer Data
