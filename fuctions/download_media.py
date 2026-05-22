@@ -4,7 +4,7 @@ import asyncio
 import aiohttp
 import pandas as pd
 import threading
-
+import re
 from tqdm import tqdm
 from datetime import datetime
 
@@ -20,6 +20,13 @@ CSV_FILE = "UL TH Nutrition.csv"
 SAVE_FOLDER = "UL TH Nutrition"
 
 TIMEOUT = 30
+
+# =====================================================
+# FILTER
+# =====================================================
+
+file_format_filter=['jpeg']        # [mp4, jpeg, webm,png, jpg]
+pattern = "|".join(map(re.escape, file_format_filter))
 
 # =====================================================
 # MODE
@@ -149,9 +156,12 @@ async def download_csv_media_async(csv_file, save_folder, mode):
 
     df = pd.read_csv(csv_file)
     df = df.sort_values(by="CREATIVE_URL_SUPPLIER")
-    df=df[:100]
     if "CREATIVE_URL_SUPPLIER" not in df.columns:
         raise ValueError("Column not found")
+    
+    if file_format_filter !=[]:
+        df = df[df["CREATIVE_URL_SUPPLIER"].apply(lambda x: any(fmt in x for fmt in file_format_filter))]
+
 
     urls = (
         df["CREATIVE_URL_SUPPLIER"]
